@@ -5,3 +5,5 @@ streamlit-folium
 pandas
 matplotlib
 plotly
+scikit-learn
+numpy
