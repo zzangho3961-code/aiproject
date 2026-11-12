@@ -3,12 +3,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from sklearn.linear_model import LinearRegression
 from pathlib import Path
 
-# --------------------------------
+# --------------------------------------------------
 # 페이지 설정
-# --------------------------------
+# --------------------------------------------------
 st.set_page_config(
     page_title="월별 평균기온 예측",
     page_icon="🌡️",
@@ -16,69 +15,154 @@ st.set_page_config(
 )
 
 st.title("🌡️ 월별 평균기온 예측 프로그램")
-st.caption("과거 기상 데이터를 이용한 선형회귀 기온 예측")
+st.write("과거 기온 데이터를 분석하고 미래의 평균기온을 예측합니다.")
 
-# --------------------------------
+# --------------------------------------------------
 # CSV 파일 불러오기
-# --------------------------------
+# pages 폴더의 상위 폴더에서 temperature.csv 찾기
+# --------------------------------------------------
 @st.cache_data
 def load_data():
-    file_path = Path(__file__).parent / "temperature.csv"
+    file_path = Path(__file__).parent.parent / "temperature.csv"
 
     if not file_path.exists():
-        raise FileNotFoundError(
-            "temperature.csv 파일을 찾을 수 없습니다."
-        )
+        st.error("temperature.csv 파일을 찾을 수 없습니다.")
+        st.info("temperature.csv 파일을 pages 폴더의 상위 폴더에 넣어주세요.")
+        st.stop()
 
-    for encoding in ["cp949", "utf-8-sig", "euc-kr"]:
+    encodings = ["cp949", "utf-8-sig", "euc-kr"]
+    data = None
+
+    for encoding in encodings:
         try:
             data = pd.read_csv(file_path, encoding=encoding)
             break
         except UnicodeDecodeError:
             continue
-    else:
-        raise ValueError("CSV 파일의 인코딩을 확인해주세요.")
+
+    if data is None:
+        st.error("CSV 파일 인코딩을 읽을 수 없습니다.")
+        st.stop()
 
     required_columns = ["일시", "평균기온(℃)"]
 
     for col in required_columns:
         if col not in data.columns:
-            raise ValueError(f"CSV에 {col} 열이 없습니다.")
+            st.error(f"CSV 파일에 '{col}' 열이 없습니다.")
+            st.write("현재 CSV 열:", list(data.columns))
+            st.stop()
 
     # 날짜 변환
-    data["날짜"] = pd.to_datetime(
+    data["일시"] = pd.to_datetime(
         data["일시"],
         format="%b-%y",
         errors="coerce"
     )
 
+    # 기온 숫자 변환
     data["평균기온(℃)"] = pd.to_numeric(
         data["평균기온(℃)"],
         errors="coerce"
     )
 
+    # 결측치 제거
     data = data.dropna(
-        subset=["날짜", "평균기온(℃)"]
+        subset=["일시", "평균기온(℃)"]
     ).copy()
 
-    data["연도"] = data["날짜"].dt.year
-    data["월"] = data["날짜"].dt.month
+    data["연도"] = data["일시"].dt.year
+    data["월"] = data["일시"].dt.month
 
-    return data.sort_values("날짜")
+    return data.sort_values("일시")
 
 
-try:
-    df = load_data()
+df = load_data()
 
-except Exception as e:
-    st.error(f"데이터 불러오기 오류: {e}")
+if df.empty:
+    st.error("분석할 수 있는 기온 데이터가 없습니다.")
     st.stop()
 
+# --------------------------------------------------
+# 회귀분석 함수
+# --------------------------------------------------
+def calculate_r2(actual, predicted):
+    actual = np.array(actual)
+    predicted = np.array(predicted)
 
-# --------------------------------
+    ss_res = np.sum((actual - predicted) ** 2)
+    ss_tot = np.sum((actual - np.mean(actual)) ** 2)
+
+    if ss_tot == 0:
+        return 0
+
+    return 1 - (ss_res / ss_tot)
+
+
+def linear_regression(years, temperatures, target_year):
+    # 선형회귀: y = ax + b
+    slope, intercept = np.polyfit(years, temperatures, 1)
+
+    predicted = slope * target_year + intercept
+    fitted = slope * years + intercept
+
+    r2 = calculate_r2(temperatures, fitted)
+
+    return predicted, fitted, r2, slope, intercept
+
+
+def polynomial_regression(years, temperatures, target_year):
+    # 연도를 중심화하여 수치 안정성 개선
+    center = np.mean(years)
+    centered_years = years - center
+
+    # 2차 다항회귀
+    coefficients = np.polyfit(
+        centered_years,
+        temperatures,
+        2
+    )
+
+    predicted = np.polyval(
+        coefficients,
+        target_year - center
+    )
+
+    fitted = np.polyval(
+        coefficients,
+        centered_years
+    )
+
+    r2 = calculate_r2(temperatures, fitted)
+
+    return predicted, fitted, r2, coefficients, center
+
+
+def knn_regression(years, temperatures, target_year, k=5):
+    # 목표 연도와 가까운 과거 연도 k개 선택
+    distances = np.abs(years - target_year)
+
+    nearest_indices = np.argsort(distances)[:min(k, len(years))]
+
+    predicted = np.mean(temperatures[nearest_indices])
+
+    fitted = []
+
+    # 각 과거 연도에 대해서도 KNN 예측값 계산
+    for year in years:
+        distance = np.abs(years - year)
+        indices = np.argsort(distance)[:min(k, len(years))]
+        fitted.append(np.mean(temperatures[indices]))
+
+    fitted = np.array(fitted)
+    r2 = calculate_r2(temperatures, fitted)
+
+    return predicted, fitted, r2, nearest_indices
+
+
+# --------------------------------------------------
 # 사용자 입력
-# --------------------------------
-st.subheader("📅 예측 조건 설정")
+# --------------------------------------------------
+st.subheader("📅 예측 조건 선택")
 
 col1, col2 = st.columns(2)
 
@@ -90,284 +174,326 @@ with col1:
     )
 
 with col2:
+    last_year = int(df["연도"].max())
+
     selected_year = st.number_input(
         "예측할 연도를 입력하세요",
-        min_value=int(df["연도"].max()) + 1,
+        min_value=last_year + 1,
         max_value=2100,
-        value=int(df["연도"].max()) + 1,
+        value=last_year + 1,
         step=1
     )
 
+# --------------------------------------------------
+# 선택한 월 데이터 추출
+# --------------------------------------------------
+monthly_data = df[df["월"] == selected_month].copy()
 
-# --------------------------------
-# 선택한 월의 데이터 추출
-# --------------------------------
-month_data = df[
-    df["월"] == selected_month
-].copy()
+monthly_data = monthly_data.sort_values("연도")
 
-month_data = month_data.sort_values("연도")
-
-if len(month_data) < 2:
-    st.error("선형회귀를 수행하기 위한 데이터가 부족합니다.")
+if len(monthly_data) < 3:
+    st.warning("선택한 월의 데이터가 3개 미만이어서 예측하기 어렵습니다.")
     st.stop()
 
+years = monthly_data["연도"].to_numpy(dtype=float)
+temperatures = monthly_data["평균기온(℃)"].to_numpy(dtype=float)
 
-# --------------------------------
-# 선형회귀 모델 학습
-# --------------------------------
-X = month_data[["연도"]]
-y = month_data["평균기온(℃)"]
+# --------------------------------------------------
+# 세 가지 알고리즘 계산
+# --------------------------------------------------
+linear_result = linear_regression(
+    years, temperatures, selected_year
+)
 
-model = LinearRegression()
-model.fit(X, y)
+poly_result = polynomial_regression(
+    years, temperatures, selected_year
+)
 
-# 과거 데이터 예측값
-month_data["회귀예측기온"] = model.predict(X)
+knn_result = knn_regression(
+    years, temperatures, selected_year
+)
 
-# 사용자가 선택한 미래 연도의 기온 예측
-future_X = pd.DataFrame({
-    "연도": [int(selected_year)]
-})
+results = {
+    "선형회귀": {
+        "prediction": linear_result[0],
+        "fitted": linear_result[1],
+        "r2": linear_result[2]
+    },
+    "다항회귀": {
+        "prediction": poly_result[0],
+        "fitted": poly_result[1],
+        "r2": poly_result[2]
+    },
+    "KNN": {
+        "prediction": knn_result[0],
+        "fitted": knn_result[1],
+        "r2": knn_result[2]
+    }
+}
 
-predicted_temp = model.predict(future_X)[0]
-
-# 회귀식
-slope = model.coef_[0]
-intercept = model.intercept_
-r2 = model.score(X, y)
-
-
-# --------------------------------
-# 예측 결과 표시
-# --------------------------------
+# --------------------------------------------------
+# 알고리즘 선택
+# --------------------------------------------------
 st.divider()
-st.subheader("🔮 기온 예측 결과")
+st.subheader("🧠 예측 알고리즘 선택")
 
-result1, result2, result3 = st.columns(3)
+selected_model = st.selectbox(
+    "사용할 예측 알고리즘을 선택하세요",
+    ["선형회귀", "다항회귀", "KNN"]
+)
 
-with result1:
+result = results[selected_model]
+prediction = result["prediction"]
+fitted = result["fitted"]
+
+# --------------------------------------------------
+# 예측 결과
+# --------------------------------------------------
+st.subheader("🔮 예측 결과")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
     st.metric(
         "예측 연도",
-        f"{selected_year}년 {selected_month}월"
+        f"{selected_year}년"
     )
 
-with result2:
+with col2:
     st.metric(
         "예측 평균기온",
-        f"{predicted_temp:.2f} ℃"
+        f"{prediction:.2f} ℃"
     )
 
-with result3:
+with col3:
     st.metric(
-        "결정계수 (R²)",
-        f"{r2:.3f}"
+        "모델 R²",
+        f"{result['r2']:.3f}"
     )
 
-st.info(
-    f"{selected_year}년 {selected_month}월의 "
-    f"예측 평균기온은 {predicted_temp:.2f}℃입니다."
-)
-
-
-# --------------------------------
-# 그래프 데이터 생성
-# --------------------------------
-# 회귀선을 부드럽게 표시하기 위한 연도 범위
-line_years = np.linspace(
-    month_data["연도"].min(),
-    selected_year,
-    300
-)
-
-line_X = pd.DataFrame({
-    "연도": line_years
-})
-
-line_temps = model.predict(line_X)
-
-# --------------------------------
+# --------------------------------------------------
 # 그래프
-# --------------------------------
-st.subheader(
-    f"📈 {selected_month}월 평균기온 및 미래 예측 그래프"
-)
+# --------------------------------------------------
+st.subheader(f"📈 {selected_month}월 평균기온 변화 및 예측")
 
 fig = go.Figure()
 
-# 실제 관측 데이터
-fig.add_trace(go.Scatter(
-    x=month_data["연도"],
-    y=month_data["평균기온(℃)"],
-    mode="markers",
-    name="실제 평균기온",
-    marker=dict(
-        size=9,
-        color="#2196F3"
-    ),
-    hovertemplate=
-    "%{x}년<br>실제 평균기온: %{y:.2f}℃<extra></extra>"
-))
+# 실제 기온 데이터
+fig.add_trace(
+    go.Scatter(
+        x=years,
+        y=temperatures,
+        mode="lines+markers",
+        name="실제 평균기온",
+        line=dict(width=2),
+        marker=dict(size=6)
+    )
+)
 
-# 선형회귀 직선
-fig.add_trace(go.Scatter(
-    x=line_years,
-    y=line_temps,
-    mode="lines",
-    name="선형회귀 예측선",
-    line=dict(
-        color="#FF7043",
-        width=3
-    ),
-    hovertemplate=
-    "연도: %{x:.1f}<br>회귀 예측: %{y:.2f}℃<extra></extra>"
-))
+# 모델이 학습한 곡선
+fig.add_trace(
+    go.Scatter(
+        x=years,
+        y=fitted,
+        mode="lines",
+        name=f"{selected_model} 학습 결과",
+        line=dict(dash="dash", width=3)
+    )
+)
 
 # 미래 예측 지점
-fig.add_trace(go.Scatter(
-    x=[selected_year],
-    y=[predicted_temp],
-    mode="markers+text",
-    name="미래 예측기온",
-    marker=dict(
-        size=15,
-        color="#D500F9",
-        symbol="star"
-    ),
-    text=[f"{predicted_temp:.2f}℃"],
-    textposition="top center",
-    hovertemplate=
-    "%{x}년<br>예측 평균기온: %{y:.2f}℃<extra></extra>"
-))
+fig.add_trace(
+    go.Scatter(
+        x=[selected_year],
+        y=[prediction],
+        mode="markers+text",
+        name="미래 예측기온",
+        marker=dict(size=14, symbol="star"),
+        text=[f"{prediction:.2f}℃"],
+        textposition="top center"
+    )
+)
 
-# 과거 마지막 연도와 미래 연도 구분
+# 마지막 실제 연도 표시
 fig.add_vline(
-    x=int(df["연도"].max()),
-    line_dash="dash",
-    line_color="gray",
-    annotation_text="실제 데이터 마지막 연도",
-    annotation_position="top"
+    x=int(max(years)),
+    line_dash="dot",
+    annotation_text="실제 데이터 마지막 연도"
 )
 
 fig.update_layout(
+    title=f"{selected_month}월 평균기온 예측 ({selected_model})",
     xaxis_title="연도",
     yaxis_title="평균기온 (℃)",
     hovermode="x unified",
     template="plotly_white",
-    height=600,
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="right",
-        x=1
-    )
-)
-
-fig.update_xaxes(
-    dtick=1,
-    showgrid=True
-)
-
-fig.update_yaxes(
-    showgrid=True,
-    ticksuffix="℃"
+    legend_title="데이터 구분"
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
-
-# --------------------------------
-# 선형회귀 알고리즘 설명
-# --------------------------------
-st.divider()
-
-st.subheader("🧠 선형회귀 알고리즘이란?")
-
-st.markdown("""
-선형회귀(Linear Regression)는 과거 데이터를 분석하여
-변수 사이의 선형적인 관계를 찾아내고, 이를 이용해
-미래의 값을 예측하는 머신러닝 알고리즘입니다.
-
-이번 프로그램에서는 과거의 **연도(X)** 와
-**평균기온(Y)** 의 관계를 학습하여 미래 기온을 예측합니다.
-""")
-
-st.latex(r"y = ax + b")
-
-st.markdown(f"""
-- **X (독립변수)** : 연도
-- **Y (종속변수)** : 평균기온
-- **a (기울기)** : 연도가 1년 증가할 때 예측기온의 변화량
-- **b (절편)** : 회귀 직선의 절편
-
-### 현재 선택한 월의 회귀식
-
-""")
-
-st.latex(
-    rf"\hat{{y}} = {slope:.4f}x + ({intercept:.4f})"
-)
-
-st.markdown(f"""
-현재 선택한 {selected_month}월의 회귀식은 위와 같습니다.
-
-기울기(a)는 **{slope:.4f}** 이며,
-이는 연도가 1년 증가할 때 모델이 예측하는
-평균기온의 변화량을 의미합니다.
-
-결정계수(R²)는 **{r2:.3f}** 입니다.
-이는 과거 데이터에서 회귀 모델이 기온 변동을
-얼마나 설명하는지 나타내는 지표입니다.
-
-### 📊 그래프 보는 방법
-
-1. **파란색 점** : 실제로 관측된 과거 평균기온입니다.
-2. **주황색 선** : 실제 데이터에 가장 잘 맞도록 학습한 선형회귀 직선입니다.
-3. **보라색 별** : 회귀 직선을 연장하여 계산한 미래 예측기온입니다.
-4. **회색 점선** : 실제 기상 데이터와 미래 예측 영역의 경계입니다.
-
-### ⚙️ 선형회귀는 어떻게 작동할까?
-
-① 과거의 같은 월에 해당하는 평균기온 데이터를 수집합니다.
-
-② 각 연도를 X값, 평균기온을 Y값으로 설정합니다.
-
-③ 여러 실제 데이터 점과의 오차 제곱합이 최소가 되는
-회귀 직선을 계산합니다.
-
-④ 계산된 직선의 기울기와 절편을 이용하여
-사용자가 입력한 미래 연도의 기온을 예측합니다.
-
-⑤ 예측된 값을 그래프에 별도로 표시합니다.
-
-**주의:** 기온은 장기적인 기후 변화뿐 아니라 계절적·자연적
-변동의 영향을 받습니다. 선형회귀는 과거의 선형적인 추세가
-미래에도 이어진다고 가정하므로 실제 기온과 차이가 발생할 수 있습니다.
-이 결과는 참고용 통계 예측값입니다.
-""")
-
-# --------------------------------
-# 데이터 정보
-# --------------------------------
-with st.expander("📁 분석에 사용된 실제 데이터 확인"):
-    st.write(
-        f"전체 데이터 기간: "
-        f"{df['연도'].min()}년 ~ {df['연도'].max()}년"
-    )
-
-    st.write(
-        f"선택한 월의 분석 데이터 수: {len(month_data)}개"
-    )
-
-    st.dataframe(
-        month_data[
-            ["연도", "월", "평균기온(℃)", "회귀예측기온"]
-        ].reset_index(drop=True),
-        use_container_width=True
-    )
-
 st.caption(
-    "🌡️ 본 프로그램은 temperature.csv의 실제 관측 데이터를 "
-    "기반으로 선형회귀 예측을 수행합니다."
+    "실선은 실제 관측 기온, 점선은 모델의 과거 데이터 학습 결과, "
+    "별표는 선택한 연도의 예측값입니다."
 )
+
+# --------------------------------------------------
+# 알고리즘 비교
+# --------------------------------------------------
+st.divider()
+st.subheader("⚖️ 세 가지 알고리즘 예측 결과 비교")
+
+comparison = pd.DataFrame({
+    "알고리즘": list(results.keys()),
+    "예측 평균기온(℃)": [
+        results[name]["prediction"]
+        for name in results
+    ],
+    "R²": [
+        results[name]["r2"]
+        for name in results
+    ]
+})
+
+st.dataframe(
+    comparison.style.format({
+        "예측 평균기온(℃)": "{:.2f}",
+        "R²": "{:.3f}"
+    }),
+    use_container_width=True,
+    hide_index=True
+)
+
+bar_fig = go.Figure()
+
+bar_fig.add_trace(
+    go.Bar(
+        x=comparison["알고리즘"],
+        y=comparison["예측 평균기온(℃)"],
+        text=[
+            f"{value:.2f}℃"
+            for value in comparison["예측 평균기온(℃)"]
+        ],
+        textposition="outside"
+    )
+)
+
+bar_fig.update_layout(
+    title=f"{selected_year}년 {selected_month}월 알고리즘별 예측기온",
+    xaxis_title="알고리즘",
+    yaxis_title="예측 평균기온 (℃)",
+    template="plotly_white"
+)
+
+st.plotly_chart(bar_fig, use_container_width=True)
+
+# --------------------------------------------------
+# 알고리즘 작동 원리 설명
+# --------------------------------------------------
+st.divider()
+st.subheader("📚 선택한 알고리즘은 어떻게 작동할까?")
+
+if selected_model == "선형회귀":
+    st.markdown("""
+    ### ① 선형회귀 (Linear Regression)
+
+    과거 연도와 평균기온 사이의 관계를 직선으로 표현하는 방법입니다.
+
+    **작동 원리**
+    1. 과거 연도를 x축, 평균기온을 y축으로 설정합니다.
+    2. 실제 데이터와 가장 잘 맞는 직선을 찾습니다.
+    3. 직선의 기울기와 절편을 계산합니다.
+    4. 미래 연도를 직선의 식에 넣어 예측합니다.
+
+    **수학 공식**
+
+    `y = ax + b`
+
+    - a: 직선의 기울기
+    - b: y절편
+    - x: 연도
+    - y: 예측 평균기온
+
+    그래프에서 점선이 직선 형태로 나타나는 것이 특징입니다.
+    """)
+
+    st.write(f"기울기: {linear_result[3]:.5f}")
+    st.write(f"절편: {linear_result[4]:.5f}")
+
+elif selected_model == "다항회귀":
+    st.markdown("""
+    ### ② 다항회귀 (Polynomial Regression)
+
+    직선이 아닌 곡선으로 데이터의 변화 추세를 분석하는 방법입니다.
+
+    **작동 원리**
+    1. 과거 연도와 평균기온 데이터를 수집합니다.
+    2. 데이터의 변화에 맞는 2차 곡선을 계산합니다.
+    3. 곡선의 계수를 구합니다.
+    4. 미래 연도를 곡선의 식에 넣어 예측합니다.
+
+    **수학 공식**
+
+    `y = ax² + bx + c`
+
+    - a, b, c: 곡선을 결정하는 계수
+    - x: 연도
+    - y: 예측 평균기온
+
+    그래프에서 점선이 곡선 형태로 나타날 수 있습니다.
+    """)
+
+    st.write(
+        "계수:",
+        [round(float(value), 6) for value in poly_result[3]]
+    )
+
+elif selected_model == "KNN":
+    st.markdown("""
+    ### ③ KNN 회귀 (K-Nearest Neighbors Regression)
+
+    예측하려는 연도와 가까운 과거 연도들의 기온을 참고하는 방법입니다.
+
+    **작동 원리**
+    1. 예측할 연도를 정합니다.
+    2. 과거 연도 중 예측 연도와 가까운 5개 연도를 찾습니다.
+    3. 선택된 5개 연도의 평균기온을 계산합니다.
+    4. 계산한 평균을 미래 기온으로 예측합니다.
+
+    **수학 공식**
+
+    `예측값 = 가까운 K개 데이터의 평균`
+
+    KNN은 직선이나 곡선을 만드는 대신 가까운 과거 데이터의 값을 활용합니다.
+    """)
+
+    st.write("사용한 이웃 데이터 개수: 5개")
+    st.write(
+        "참고한 과거 연도:",
+        [int(years[i]) for i in knn_result[3]]
+    )
+
+# --------------------------------------------------
+# 주의사항
+# --------------------------------------------------
+st.info("""
+📌 **예측 시 주의사항**
+
+- 기온은 여러 기후 요인의 영향을 받으므로 예측값이 실제 기온과 다를 수 있습니다.
+- 선형회귀는 장기적인 직선 추세를 가정합니다.
+- 다항회귀는 장기 예측에서 곡선이 지나치게 커질 수 있습니다.
+- KNN은 가까운 과거 데이터의 평균을 사용하므로 먼 미래를 예측할 때 변화가 충분히 반영되지 않을 수 있습니다.
+- R²는 현재 학습 데이터에 대한 적합도를 나타내며 미래 예측의 정확도를 보장하지 않습니다.
+""")
+
+# --------------------------------------------------
+# 원본 데이터 확인
+# --------------------------------------------------
+with st.expander("📂 선택한 월의 과거 기온 데이터 확인하기"):
+    st.dataframe(
+        monthly_data[["일시", "연도", "월", "평균기온(℃)"]],
+        use_container_width=True,
+        hide_index=True
+    )
+
+st.success("분석이 완료되었습니다! 🌡️")
