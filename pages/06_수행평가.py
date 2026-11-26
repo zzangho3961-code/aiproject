@@ -1,328 +1,264 @@
 
 import streamlit as st
+import pandas as pd
+import plotly.graph_objects as go
+from pathlib import Path
 
+# 페이지 설정
 st.set_page_config(
-    page_title="MBTI 취미 추천소 🎨",
-    page_icon="🎯",
+    page_title="국가별 MBTI 분석",
+    page_icon="🌍",
     layout="wide"
 )
 
 # 제목
-st.title("🎯 MBTI별 취미 추천소")
-st.subheader("나에게 딱 맞는 취미를 찾아보자!")
-st.write("MBTI를 선택하면 어울리는 취미 2가지와 관련 학과, 성격 특징을 알려줄게! ✨")
-st.caption("※ MBTI는 재미와 자기 탐색을 위한 참고 자료이며, 실제 성격이나 적성을 결정하지는 않아요.")
-
-# MBTI별 취미 데이터
-mbti_data = {
-    "ISTJ": {
-        "hobbies": [
-            {
-                "name": "📸 사진 촬영",
-                "desc": "주변의 풍경과 사물을 관찰하고 기록하는 취미야. 사진 구도와 촬영 기술을 하나씩 익히는 재미가 있어.",
-                "major": "사진학과, 미디어학과",
-                "personality": "꼼꼼하고 관찰력이 좋으며 체계적으로 작업하는 사람"
-            },
-            {
-                "name": "🪴 식물 키우기",
-                "desc": "식물의 성장 과정을 관찰하고 꾸준히 관리하는 취미야.",
-                "major": "원예학과, 생명과학과",
-                "personality": "책임감이 있고 꾸준하며 세심한 사람"
-            }
-        ]
-    },
-    "ISFJ": {
-        "hobbies": [
-            {
-                "name": "🍰 베이킹",
-                "desc": "정해진 레시피를 따라 맛있는 디저트를 만들고 주변 사람들과 나눌 수 있어.",
-                "major": "제과제빵학과, 호텔조리학과",
-                "personality": "꼼꼼하고 배려심이 있으며 섬세한 사람"
-            },
-            {
-                "name": "🧶 뜨개질",
-                "desc": "실과 바늘을 이용해 목도리나 소품을 직접 만드는 취미야.",
-                "major": "패션디자인학과, 섬유디자인학과",
-                "personality": "인내심이 있고 차분하며 집중력이 좋은 사람"
-            }
-        ]
-    },
-    "INFJ": {
-        "hobbies": [
-            {
-                "name": "✍️ 글쓰기",
-                "desc": "자신의 생각과 감정을 글로 표현하며 이야기를 만들어 보는 취미야.",
-                "major": "문예창작학과, 국어국문학과",
-                "personality": "상상력이 풍부하고 생각이 깊으며 표현력이 좋은 사람"
-            },
-            {
-                "name": "🎨 그림 그리기",
-                "desc": "자신만의 생각과 감성을 그림으로 표현할 수 있어.",
-                "major": "회화과, 시각디자인학과",
-                "personality": "창의적이고 섬세하며 자기만의 표현 방식을 찾는 사람"
-            }
-        ]
-    },
-    "INTJ": {
-        "hobbies": [
-            {
-                "name": "♟️ 체스",
-                "desc": "상대의 움직임을 예측하고 여러 가지 전략을 세우는 두뇌 게임이야.",
-                "major": "컴퓨터공학과, 수학과",
-                "personality": "분석적이고 논리적이며 전략적인 사고를 즐기는 사람"
-            },
-            {
-                "name": "💻 코딩",
-                "desc": "아이디어를 실제 프로그램이나 웹사이트로 구현하는 취미야.",
-                "major": "컴퓨터공학과, 소프트웨어학과",
-                "personality": "문제 해결을 좋아하고 논리적인 사람"
-            }
-        ]
-    },
-    "ISTP": {
-        "hobbies": [
-            {
-                "name": "🔧 DIY 공예",
-                "desc": "다양한 재료와 도구를 활용해 직접 물건을 만들고 수리하는 취미야.",
-                "major": "기계공학과, 산업디자인학과",
-                "personality": "실용적이고 손재주가 있으며 직접 경험하는 것을 좋아하는 사람"
-            },
-            {
-                "name": "🚲 자전거 정비",
-                "desc": "자전거의 구조를 이해하고 부품을 관리하며 정비 기술을 배울 수 있어.",
-                "major": "기계공학과, 자동차공학과",
-                "personality": "호기심이 많고 도구를 다루는 데 관심이 있는 사람"
-            }
-        ]
-    },
-    "ISFP": {
-        "hobbies": [
-            {
-                "name": "🌷 꽃꽂이",
-                "desc": "다양한 꽃과 색상을 조합해 자신만의 작품을 만드는 취미야.",
-                "major": "플로리스트학과, 원예학과",
-                "personality": "감각적이고 섬세하며 미적 감각이 있는 사람"
-            },
-            {
-                "name": "🎸 악기 연주",
-                "desc": "기타나 피아노 같은 악기를 배우며 음악을 직접 표현할 수 있어.",
-                "major": "실용음악과, 음악학과",
-                "personality": "감성이 풍부하고 자신만의 표현을 즐기는 사람"
-            }
-        ]
-    },
-    "INFP": {
-        "hobbies": [
-            {
-                "name": "📚 독서",
-                "desc": "다양한 이야기를 접하며 새로운 생각과 상상력을 키울 수 있는 취미야.",
-                "major": "문예창작학과, 국어국문학과",
-                "personality": "상상력이 풍부하고 생각이 깊으며 호기심이 많은 사람"
-            },
-            {
-                "name": "🎬 영상 제작",
-                "desc": "자신만의 이야기를 영상으로 기획하고 촬영하고 편집하는 취미야.",
-                "major": "영상학과, 미디어커뮤니케이션학과",
-                "personality": "창의적이고 표현력이 좋으며 새로운 아이디어를 좋아하는 사람"
-            }
-        ]
-    },
-    "INTP": {
-        "hobbies": [
-            {
-                "name": "🔬 과학 실험",
-                "desc": "일상 속 현상을 관찰하고 과학적인 원리를 알아보는 취미야.",
-                "major": "물리학과, 화학과",
-                "personality": "호기심이 많고 탐구심이 강하며 분석적인 사람"
-            },
-            {
-                "name": "🧩 퍼즐 및 보드게임",
-                "desc": "복잡한 문제를 해결하고 다양한 규칙과 전략을 연구하는 취미야.",
-                "major": "수학과, 통계학과",
-                "personality": "논리적이고 집중력이 좋으며 새로운 문제를 즐기는 사람"
-            }
-        ]
-    },
-    "ESTP": {
-        "hobbies": [
-            {
-                "name": "🏀 농구",
-                "desc": "팀원들과 협력하고 순간적인 판단력을 발휘하는 활동적인 취미야.",
-                "major": "체육학과, 스포츠과학과",
-                "personality": "활동적이고 순발력이 있으며 도전적인 사람"
-            },
-            {
-                "name": "🍳 새로운 요리 도전",
-                "desc": "다양한 식재료와 조리법을 활용해 새로운 메뉴를 만들어 보는 취미야.",
-                "major": "호텔조리학과, 외식경영학과",
-                "personality": "도전적이고 실행력이 있으며 새로운 경험을 즐기는 사람"
-            }
-        ]
-    },
-    "ESFP": {
-        "hobbies": [
-            {
-                "name": "💃 댄스",
-                "desc": "음악에 맞춰 움직이며 에너지와 개성을 표현하는 취미야.",
-                "major": "실용무용과, 공연예술학과",
-                "personality": "활발하고 표현력이 좋으며 사람들과 함께하는 것을 좋아하는 사람"
-            },
-            {
-                "name": "🍰 디저트 만들기",
-                "desc": "예쁜 케이크와 디저트를 만들며 창의력과 손재주를 발휘할 수 있어.",
-                "major": "제과제빵학과, 호텔조리학과",
-                "personality": "감각적이고 적극적이며 새로운 시도를 즐기는 사람"
-            }
-        ]
-    },
-    "ENFP": {
-        "hobbies": [
-            {
-                "name": "🎭 연극 및 연기",
-                "desc": "다양한 캐릭터를 표현하고 사람들과 함께 작품을 만들어 가는 취미야.",
-                "major": "연극영화과, 공연예술학과",
-                "personality": "표현력이 좋고 상상력이 풍부하며 새로운 도전을 좋아하는 사람"
-            },
-            {
-                "name": "✈️ 여행 및 여행 기록",
-                "desc": "새로운 장소를 탐험하고 사진과 글로 특별한 경험을 남기는 취미야.",
-                "major": "관광학과, 문화콘텐츠학과",
-                "personality": "호기심이 많고 적응력이 좋으며 다양한 경험을 즐기는 사람"
-            }
-        ]
-    },
-    "ENTP": {
-        "hobbies": [
-            {
-                "name": "🎤 토론 및 발표",
-                "desc": "다양한 주제에 대해 의견을 나누고 새로운 관점을 발견하는 취미야.",
-                "major": "정치외교학과, 미디어커뮤니케이션학과",
-                "personality": "말하기를 즐기고 논리적이며 아이디어가 풍부한 사람"
-            },
-            {
-                "name": "🚀 창업 아이디어 기획",
-                "desc": "새로운 제품이나 서비스를 상상하고 실제 사업 아이디어로 발전시키는 취미야.",
-                "major": "경영학과, 창업학과",
-                "personality": "도전정신이 있고 창의적이며 새로운 가능성을 찾는 사람"
-            }
-        ]
-    },
-    "ESTJ": {
-        "hobbies": [
-            {
-                "name": "📅 일정 및 프로젝트 관리",
-                "desc": "목표를 정하고 계획을 세워 프로젝트를 체계적으로 완성하는 취미야.",
-                "major": "경영학과, 행정학과",
-                "personality": "책임감이 강하고 계획적이며 조직적으로 일하는 사람"
-            },
-            {
-                "name": "⚽ 축구",
-                "desc": "팀원들과 전략을 세우고 목표를 향해 협력하는 스포츠야.",
-                "major": "체육학과, 스포츠경영학과",
-                "personality": "협동심과 추진력이 있으며 목표 지향적인 사람"
-            }
-        ]
-    },
-    "ESFJ": {
-        "hobbies": [
-            {
-                "name": "🍳 홈파티 요리",
-                "desc": "친구나 가족을 위해 음식을 준비하고 함께 즐기는 취미야.",
-                "major": "호텔조리학과, 외식경영학과",
-                "personality": "친화력이 좋고 배려심이 있으며 협동을 즐기는 사람"
-            },
-            {
-                "name": "🎁 캘리그래피 및 카드 만들기",
-                "desc": "손글씨와 그림으로 특별한 메시지를 직접 디자인하는 취미야.",
-                "major": "시각디자인학과, 산업디자인학과",
-                "personality": "섬세하고 따뜻하며 다른 사람을 위한 활동을 즐기는 사람"
-            }
-        ]
-    },
-    "ENFJ": {
-        "hobbies": [
-            {
-                "name": "🎙️ 콘텐츠 진행",
-                "desc": "방송이나 팟캐스트를 기획하고 사람들과 소통하는 취미야.",
-                "major": "방송영상학과, 미디어커뮤니케이션학과",
-                "personality": "소통 능력이 좋고 표현력이 뛰어나며 협력적인 사람"
-            },
-            {
-                "name": "🤝 봉사활동",
-                "desc": "지역사회나 주변 사람들에게 도움이 되는 활동에 참여하는 취미야.",
-                "major": "사회복지학과, 사회학과",
-                "personality": "공감 능력이 있고 책임감이 있으며 사람들과 협력하는 사람"
-            }
-        ]
-    },
-    "ENTJ": {
-        "hobbies": [
-            {
-                "name": "📈 투자 및 경제 공부",
-                "desc": "경제 흐름과 기업의 경영 전략을 공부하며 분석하는 취미야.",
-                "major": "경제학과, 경영학과",
-                "personality": "분석적이고 목표 지향적이며 계획적으로 생각하는 사람"
-            },
-            {
-                "name": "🏆 프로젝트 기획",
-                "desc": "목표를 설정하고 역할을 나누어 새로운 프로젝트를 주도하는 취미야.",
-                "major": "경영학과, 산업공학과",
-                "personality": "리더십과 추진력이 있고 문제 해결을 즐기는 사람"
-            }
-        ]
-    }
-}
-
-# MBTI 선택
-st.divider()
-st.subheader("🔍 나의 MBTI를 선택해 줘!")
-
-mbti_list = list(mbti_data.keys())
-
-selected_mbti = st.selectbox(
-    "MBTI 유형을 선택하세요.",
-    mbti_list,
-    index=0
-)
-
-# 선택 결과
-data = mbti_data[selected_mbti]
+st.title("🌍 국가별 MBTI 유형 분석")
+st.write("국가를 선택하고 해당 국가의 MBTI 비율을 확인해 보세요!")
 
 st.divider()
 
-st.markdown(
-    f"<h2 style='text-align:center; color:#4B8BBE;'>✨ {selected_mbti} 추천 결과 ✨</h2>",
-    unsafe_allow_html=True
+# CSV 경로 설정
+BASE_DIR = Path(__file__).resolve().parent.parent
+CSV_PATH = BASE_DIR / "mbti_country.csv"
+
+# CSV 불러오기
+@st.cache_data
+def load_data():
+    encodings = ["utf-8-sig", "cp949", "euc-kr"]
+
+    for encoding in encodings:
+        try:
+            return pd.read_csv(CSV_PATH, encoding=encoding)
+        except UnicodeDecodeError:
+            continue
+
+    raise ValueError("CSV 인코딩을 확인해 주세요.")
+
+try:
+    df = load_data()
+
+except FileNotFoundError:
+    st.error("CSV 파일을 찾을 수 없습니다.")
+    st.info("CSV 파일을 파이썬 파일의 상위 폴더에 넣어주세요.")
+    st.stop()
+
+except Exception as e:
+    st.error(f"데이터를 불러오는 중 오류가 발생했습니다: {e}")
+    st.stop()
+
+
+# 데이터 열 확인
+st.subheader("📊 데이터 확인")
+
+st.caption("CSV 파일의 국가 및 MBTI 데이터 구조를 확인합니다.")
+
+st.dataframe(df.head(), use_container_width=True)
+
+# 데이터 열 이름
+columns = df.columns.tolist()
+
+# 국가 열 자동 탐색
+country_candidates = ["Country", "country", "국가", "나라"]
+country_col = next(
+    (col for col in country_candidates if col in columns),
+    columns[0]
 )
 
-st.write("이런 활동들을 취미로 시작해 보면 어떨까?")
+# MBTI 열 자동 탐색
+mbti_types = [
+    "INTJ", "INTP", "ENTJ", "ENTP",
+    "INFJ", "INFP", "ENFJ", "ENFP",
+    "ISTJ", "ISFJ", "ESTJ", "ESFJ",
+    "ISTP", "ISFP", "ESTP", "ESFP"
+]
 
-# 취미 카드 2개
-col1, col2 = st.columns(2)
+available_mbti = [m for m in mbti_types if m in columns]
 
-for col, hobby in zip([col1, col2], data["hobbies"]):
-    with col:
-        with st.container(border=True):
-            st.subheader(hobby["name"])
-            st.write(hobby["desc"])
+if len(available_mbti) != 16:
+    st.error(
+        "CSV 파일에서 MBTI 16개 열을 모두 찾을 수 없습니다. "
+        "열 이름을 확인해 주세요."
+    )
+    st.write("현재 열 이름:", columns)
+    st.stop()
 
-            st.markdown("#### 🎓 관련 학과")
-            st.info(hobby["major"])
+# 국가 선택
+countries = sorted(df[country_col].dropna().unique().tolist())
 
-            st.markdown("#### 🧑‍💼 이런 성격이라면 잘 어울려!")
-            st.write(hobby["personality"])
+if not countries:
+    st.error("CSV에 국가 데이터가 없습니다.")
+    st.stop()
 
-# 마무리
+st.subheader("🌏 국가 선택")
+
+selected_country = st.selectbox(
+    "분석할 국가를 선택하세요.",
+    countries
+)
+
+# 선택 국가 데이터
+country_data = df[df[country_col] == selected_country]
+
+if country_data.empty:
+    st.warning("선택한 국가의 데이터가 없습니다.")
+    st.stop()
+
+# 국가별 MBTI 비율 추출
+values = country_data.iloc[0][available_mbti]
+
+values = pd.to_numeric(values, errors="coerce")
+
+if values.isna().any():
+    st.error("MBTI 비율 데이터에 숫자가 아닌 값이 있습니다.")
+    st.stop()
+
+# 내림차순 정렬
+result = pd.DataFrame({
+    "MBTI": available_mbti,
+    "비율": values.values
+})
+
+result = result.sort_values(
+    by="비율",
+    ascending=False
+).reset_index(drop=True)
+
+# 1위 유형
+top_mbti = result.iloc[0]["MBTI"]
+top_ratio = result.iloc[0]["비율"]
+
+# 상단 주요 정보
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("선택 국가", selected_country)
+
+with col2:
+    st.metric("가장 높은 MBTI", top_mbti)
+
+with col3:
+    st.metric("최고 비율", f"{top_ratio:.2f}%")
+
 st.divider()
 
-st.success("🌟 MBTI는 참고일 뿐! 가장 중요한 건 네가 직접 즐겁게 할 수 있는 취미라는 사실!")
+# 그래프
+st.subheader("📈 MBTI 유형별 비율")
 
-st.markdown(
-    """
-    ### 💬 오늘의 추천 메시지
-    새로운 취미에 도전하는 것만으로도 멋진 시작이야!
-    부담 갖지 말고 마음에 드는 활동부터 하나씩 경험해 보자. 😊
-    """
+# 그래프 색상
+colors = [
+    "#16A34A" if mbti == top_mbti
+    else f"rgba(59, 130, 246, {max(0.25, 0.9 - i * 0.045)})"
+    for i, mbti in enumerate(result["MBTI"])
+]
+
+fig = go.Figure()
+
+# 전체 MBTI 꺾은선 그래프
+fig.add_trace(go.Scatter(
+    x=result["MBTI"],
+    y=result["비율"],
+    mode="lines+markers",
+    name="MBTI 비율",
+    line=dict(
+        color="#60A5FA",
+        width=3
+    ),
+    marker=dict(
+        size=11,
+        color=colors,
+        line=dict(
+            color="white",
+            width=1.5
+        )
+    ),
+    customdata=result[["비율"]].values,
+    hovertemplate=(
+        "<b>MBTI: %{x}</b><br>"
+        "비율: %{y:.2f}%<extra></extra>"
+    )
+))
+
+# 1위 MBTI 강조
+fig.add_trace(go.Scatter(
+    x=[top_mbti],
+    y=[top_ratio],
+    mode="markers+text",
+    name="1위 MBTI",
+    marker=dict(
+        color="#16A34A",
+        size=19,
+        symbol="star",
+        line=dict(color="white", width=2)
+    ),
+    text=[f"1위 {top_mbti}"],
+    textposition="top center",
+    textfont=dict(
+        color="#16A34A",
+        size=13
+    ),
+    hovertemplate=(
+        "<b>🥇 1위 MBTI</b><br>"
+        "%{x}<br>"
+        "비율: %{y:.2f}%<extra></extra>"
+    )
+))
+
+fig.update_layout(
+    title=f"{selected_country}의 MBTI 유형별 비율",
+    xaxis_title="MBTI 유형",
+    yaxis_title="비율 (%)",
+    template="plotly_white",
+    height=520,
+    hovermode="x unified",
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
+    ),
+    margin=dict(l=30, r=30, t=80, b=40)
 )
 
-st.caption("Made with Streamlit 🎈")
+fig.update_xaxes(
+    showgrid=False
+)
+
+fig.update_yaxes(
+    showgrid=True,
+    gridcolor="rgba(150,150,150,0.2)",
+    rangemode="tozero"
+)
+
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
+
+st.divider()
+
+# 순위표
+st.subheader("🏆 MBTI 비율 순위")
+
+result.index = result.index + 1
+result.index.name = "순위"
+
+st.dataframe(
+    result.style.format({"비율": "{:.2f}%"}),
+    use_container_width=True
+)
+
+# 다운로드 기능
+csv_data = result.to_csv(
+    index=True,
+    encoding="utf-8-sig"
+)
+
+st.download_button(
+    label="📥 분석 결과 CSV 다운로드",
+    data=csv_data,
+    file_name=f"{selected_country}_MBTI_analysis.csv",
+    mime="text/csv"
+)
+
+st.caption("※ MBTI 비율은 제공된 CSV 데이터에 기반합니다.")
